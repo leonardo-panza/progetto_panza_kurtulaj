@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snake</title>
+<style>
+:root{
+  --bg:#f5f5f2; --fg:#2b2b2b; --muted:#8a8a85;
+  --prato:#7bc86c; --serpente:#7a4a21; --bacca:#e03a3a;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--bg:#1d1d1b;--fg:#ececE8;--muted:#8d8d88;color-scheme:dark}
+}
+:root[data-theme="dark"]{--bg:#1d1d1b;--fg:#ececE8;--muted:#8d8d88;color-scheme:dark}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg);color:var(--fg);
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+}
+#info{display:flex;gap:24px;font-size:15px;color:var(--muted)}
+#info b{color:var(--fg);font-weight:600}
+table{border-collapse:collapse;border:2px solid var(--fg);touch-action:none}
+td{
+  width:min(7.5vw,32px);height:min(7.5vw,32px);
+  padding:0;background:var(--prato);
+}
+td.serpente{background:var(--serpente)}
+td.bacca{background:var(--bacca)}
+#msg{min-height:1.4em;font-size:14px;color:var(--muted);text-align:center;padding:0 16px}
+button{
+  font:inherit;font-size:14px;color:var(--fg);background:none;
+  border:1px solid var(--fg);padding:6px 16px;cursor:pointer;
+}
+button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="info"><span>Punti <b id="punti">0</b></span><span>Record <b id="record">0</b></span></div>
+<table id="campo" aria-label="Campo di gioco"></table>
+<div id="msg">Premi una freccia per iniziare</div>
+<button id="nuova">Nuova partita</button>
+
+<script>
+const N = 11, TICK = 2000;
+const tabella = document.getElementById('campo');
+const celle = [];
+for (let r = 0; r < N; r++) {
+  const tr = tabella.insertRow();
+  for (let c = 0; c < N; c++) celle.push(tr.insertCell());
+}
+
+// matrice di gioco: 0 = prato, 1 = serpente, 2 = bacca
+let griglia, serpente, dir, prossimaDir, bacca, punti, timer, record = 0;
+
+function nuova() {
+  clearInterval(timer); timer = null;
+  griglia = Array.from({length: N}, () => Array(N).fill(0));
+  serpente = [{r:5,c:5},{r:5,c:4},{r:5,c:3}];
+  serpente.forEach(s => griglia[s.r][s.c] = 1);
+  dir = prossimaDir = null;
+  punti = 0;
+  piazzaBacca();
+  document.getElementById('msg').textContent = 'Premi una freccia per iniziare';
+  disegna();
+}
+
+function piazzaBacca() {
+  const libere = [];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (griglia[r][c] === 0) libere.push({r,c});
+  if (!libere.length) return fine('Hai vinto!');
+  bacca = libere[Math.floor(Math.random() * libere.length)];
+  griglia[bacca.r][bacca.c] = 2;
+}
+
+function disegna() {
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      celle[r*N+c].className = ['', 'serpente', 'bacca'][griglia[r][c]];
+  document.getElementById('punti').textContent = punti;
+  document.getElementById('record').textContent = record;
+}
+
+function passo() {
+  dir = prossimaDir;
+  const testa = serpente[0];
+  const nuovaTesta = {r: testa.r + dir.r, c: testa.c + dir.c};
+  if (nuovaTesta.r < 0 || nuovaTesta.r >= N || nuovaTesta.c < 0 || nuovaTesta.c >= N)
+    return fine('Hai colpito il bordo.');
+  const mangia = griglia[nuovaTesta.r][nuovaTesta.c] === 2;
+  if (!mangia) {
+    const coda = serpente.pop();
+    griglia[coda.r][coda.c] = 0;
+  }
+  if (griglia[nuovaTesta.r][nuovaTesta.c] === 1) return fine('Ti sei morso la coda.');
+  serpente.unshift(nuovaTesta);
+  griglia[nuovaTesta.r][nuovaTesta.c] = 1;
+  if (mangia) {
+    punti++;
+    record = Math.max(record, punti);
+    piazzaBacca();
+  }
+  disegna();
+}
+
+function fine(testo) {
+  clearInterval(timer); timer = null;
+  document.getElementById('msg').textContent = testo + ' Premi una freccia per riprovare.';
+  dir = null; prossimaDir = null; finita = true;
+  disegna();
+}
+let finita = false;
+
+function muovi(d) {
+  if (finita) { finita = false; nuova(); }
+  // impedisce l'inversione di marcia
+  if (dir && d.r === -dir.r && d.c === -dir.c) return;
+  if (!dir && d.c === -1 && d.r === 0) return; // all'inizio il serpente guarda a destra
+  prossimaDir = d;
+  if (!timer) {
+    document.getElementById('msg').textContent = '';
+    timer = setInterval(passo, TICK);
+  }
+}
+
+const tasti = {
+  ArrowUp:{r:-1,c:0}, ArrowDown:{r:1,c:0}, ArrowLeft:{r:0,c:-1}, ArrowRight:{r:0,c:1},
+  w:{r:-1,c:0}, s:{r:1,c:0}, a:{r:0,c:-1}, d:{r:0,c:1}
+};
+document.addEventListener('keydown', e => {
+  const d = tasti[e.key];
+  if (d) { e.preventDefault(); muovi(d); }
+});
+
+// swipe su touch
+let t0 = null;
+tabella.addEventListener('touchstart', e => { t0 = e.touches[0]; }, {passive:true});
+tabella.addEventListener('touchend', e => {
+  if (!t0) return;
+  const t = e.changedTouches[0], dx = t.clientX - t0.clientX, dy = t.clientY - t0.clientY;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) > 20)
+    muovi(Math.abs(dx) > Math.abs(dy) ? {r:0,c:dx>0?1:-1} : {r:dy>0?1:-1,c:0});
+  t0 = null;
+});
+
+document.getElementById('nuova').addEventListener('click', () => { finita = false; nuova(); });
+nuova();
+</script>
+</body>
+</html>
